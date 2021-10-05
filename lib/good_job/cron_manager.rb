@@ -12,13 +12,13 @@ module GoodJob # :nodoc:
     # @!attribute [r] instances
     #   @!scope class
     #   List of all instantiated CronManagers in the current process.
-    #   @return [Array<GoodJob::CronManagers>, nil]
+    #   @return [Array<GoodJob::CronManager>, nil]
     cattr_reader :instances, default: [], instance_reader: false
 
     # Task observer for cron task
     # @param time [Time]
     # @param output [Object]
-    # @param thread_error [Exception]
+    # @param thread_error [Exception, nil]
     def self.task_observer(time, output, thread_error) # rubocop:disable Lint/UnusedMethodArgument
       return if thread_error.is_a? Concurrent::CancelledOperationError
 

@@ -77,7 +77,6 @@ module GoodJob
   #   * +-1+, the scheduler will wait until the shutdown is complete.
   #   * +0+, the scheduler will immediately shutdown and stop any active tasks.
   #   * +1..+, the scheduler will wait that many seconds before stopping any remaining active tasks.
-  # @param wait [Boolean] whether to wait for shutdown
   # @return [void]
   def self.shutdown(timeout: -1)
     _shutdown_all(_executables, timeout: timeout)
@@ -123,7 +122,7 @@ module GoodJob
   # analyze or inspect job performance.
   # If you are preserving job records this way, use this method regularly to
   # delete old records and preserve space in your database.
-  # @params older_than [nil,Numeric,ActiveSupport::Duration] Jobs olders than this will be deleted (default: +86400+).
+  # @param older_than [nil, Numeric, ActiveSupport::Duration] Jobs olders than this will be deleted (default: +86400+).
   # @return [Integer] Number of jobs that were deleted.
   def self.cleanup_preserved_jobs(older_than: nil)
     older_than ||= GoodJob::Configuration.new({}).cleanup_preserved_jobs_before_seconds_ago
@@ -136,6 +135,7 @@ module GoodJob
     end
   end
 
+  # @return [Array<Notifier, Poller, Scheduler, MultiScheduler, CronManager>]
   def self._executables
     [].concat(
       CronManager.instances,

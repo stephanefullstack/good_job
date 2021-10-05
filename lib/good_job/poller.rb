@@ -98,7 +98,7 @@ module GoodJob # :nodoc:
 
     private
 
-    # @return [Concurrent::TimerTask]
+    # @return [Concurrent::TimerTask, nil]
     attr_reader :timer
 
     # @return [void]

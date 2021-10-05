@@ -39,6 +39,7 @@ module GoodJob # :nodoc:
 
     # Send a message via Postgres NOTIFY
     # @param message [#to_json]
+    # @return [void]
     def self.notify(message)
       connection = Execution.connection
       connection.exec_query <<~SQL.squish
@@ -109,6 +110,9 @@ module GoodJob # :nodoc:
 
     # Invoked on completion of ThreadPoolExecutor task
     # @!visibility private
+    # @param _time [Integer]
+    # @param _result [Object]
+    # @param thread_error [nil, Exception]
     # @return [void]
     def listen_observer(_time, _result, thread_error)
       return if thread_error.is_a? AdapterCannotListenError
@@ -129,8 +133,10 @@ module GoodJob # :nodoc:
 
     private
 
+    # @return [Concurrent::ThreadPoolExecutor]
     attr_reader :executor
 
+    # @return [void]
     def create_executor
       @executor = Concurrent::ThreadPoolExecutor.new(EXECUTOR_OPTIONS)
     end

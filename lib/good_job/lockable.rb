@@ -163,6 +163,7 @@ module GoodJob
       end
 
       # Allow advisory_lockable_column to be a `Concurrent::Delay`
+      # @return [String]
       def _advisory_lockable_column
         column = advisory_lockable_column
         column.respond_to?(:value) ? column.value : column
@@ -326,6 +327,7 @@ module GoodJob
     end
 
     # Default Advisory Lock key for column-based locking
+    # @param column [String]
     # @return [String]
     def lockable_column_key(column: self.class._advisory_lockable_column)
       "#{self.class.table_name}-#{self[column]}"
