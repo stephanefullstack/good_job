@@ -62,8 +62,9 @@ Rails.application.configure do
 
   config.active_job.queue_adapter = :good_job
   GoodJob.preserve_job_records = true
+  GoodJob.on_thread_error = -> (error) { Rails.logger.warn(error) }
 
-  config.good_job.enable_cron = true
+  config.good_job.enable_cron = ActiveModel::Type::Boolean.new.cast(ENV.fetch('GOOD_JOB_ENABLE_CRON', true))
   config.good_job.cron = {
     frequent_example: {
       description: "Enqueue an ExampleJob",
