@@ -8,6 +8,10 @@ module GoodJob
   class ActiveJobJob < Object.const_get(GoodJob.active_record_parent_class)
     include GoodJob::Lockable
 
+    ActionForStateMismatchError = Class.new(StandardError)
+    AdapterNotGoodJobError = Class.new(StandardError)
+    DiscardJobError = Class.new(StandardError)
+
     self.table_name = 'good_jobs'
     self.primary_key = 'active_job_id'
     self.advisory_lockable_column = 'active_job_id'
@@ -69,14 +73,15 @@ module GoodJob
     end
 
     def status
-      if finished_at.present?
-        if error.present?
+      execution = head_execution
+      if execution.finished_at.present?
+        if execution.error.present?
           :discarded
         else
           :finished
         end
-      elsif (scheduled_at || created_at) > DateTime.current
-        if serialized_params.fetch('executions', 0) > 1
+      elsif (execution.scheduled_at || execution.created_at) > DateTime.current
+        if execution.serialized_params.fetch('executions', 0) > 1
           :retried
         else
           :scheduled
@@ -88,7 +93,13 @@ module GoodJob
       end
     end
 
-    def head_execution
+    def head?
+      _execution_id == head_execution(reload: true).id
+    end
+
+    def head_execution(reload: false)
+      executions.reload if reload
+      executions.load # memoize the results
       executions.last
     end
 
@@ -97,7 +108,7 @@ module GoodJob
     end
 
     def executions_count
-      aj_count = serialized_params.fetch('executions', 0)
+      aj_count = head_execution.serialized_params.fetch('executions', 0)
       # The execution count within serialized_params is not updated
       # once the underlying execution has been executed.
       if status.in? [:discarded, :finished, :running]
@@ -112,7 +123,7 @@ module GoodJob
     end
 
     def recent_error
-      error.presence || executions[-2]&.error
+      head_execution.error || executions[-2]&.error
     end
 
     def running?
@@ -121,6 +132,64 @@ module GoodJob
         self['locktype'].present?
       else
         advisory_locked?
+      end
+    end
+
+    def retry_job
+      with_advisory_lock do
+        execution = head_execution(reload: true)
+        active_job = execution.active_job
+
+        raise AdapterNotGoodJobError unless active_job.class.queue_adapter.is_a? GoodJob::Adapter
+        raise ActionForStateMismatchError unless status == :discarded
+
+        # Update the executions count because the previous execution will not have been preserved
+        # Do not update `exception_executions` because that comes from rescue_from's arguments
+        active_job.executions = (active_job.executions || 0) + 1
+
+        new_active_job = nil
+        GoodJob::CurrentThread.within do |current_thread|
+          current_thread.execution = execution
+
+          execution.class.transaction(joinable: false, requires_new: true) do
+            new_active_job = active_job.retry_job(wait: 0, error: error)
+            execution.save
+          end
+        end
+        new_active_job
+      end
+    end
+
+    def discard_job(message)
+      with_advisory_lock do
+        raise ActionForStateMismatchError unless status.in? [:scheduled, :queued, :retried]
+
+        execution = head_execution(reload: true)
+        active_job = execution.active_job
+
+        job_error = GoodJob::ActiveJobJob::DiscardJobError.new(message)
+
+        update_execution = proc do
+          execution.update(
+            finished_at: Time.current,
+            error: [job_error.class, GoodJob::Execution::ERROR_MESSAGE_SEPARATOR, job_error.message].join
+          )
+        end
+
+        if active_job.respond_to?(:instrument)
+          active_job.send :instrument, :discard, error: job_error, &update_execution
+        else
+          update_execution.call
+        end
+      end
+    end
+
+    def reschedule_job(scheduled_at = Time.current)
+      with_advisory_lock do
+        raise ActionForStateMismatchError unless status.in? [:scheduled, :queued, :retried]
+
+        execution = head_execution(reload: true)
+        execution.update(scheduled_at: scheduled_at)
       end
     end
   end
